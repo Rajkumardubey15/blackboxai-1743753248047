@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance History</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">Attendance History</h1>
+                <p class="text-gray-600">View your past attendance records</p>
+            </div>
+            <div>
+                <a href="/dashboard" class="text-blue-600 hover:text-blue-800">
+                    <i class="fas fa-arrow-left mr-1"></i> Back to Dashboard
+                </a>
+            </div>
+        </header>
+
+        <!-- Filters -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+                    <input type="date" id="fromDate" class="w-full border border-gray-300 rounded-md p-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+                    <input type="date" id="toDate" class="w-full border border-gray-300 rounded-md p-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select id="statusFilter" class="w-full border border-gray-300 rounded-md p-2">
+                        <option value="all">All</option>
+                        <option value="in">Punch In</option>
+                        <option value="out">Punch Out</option>
+                    </select>
+                </div>
+                <div class="flex items-end">
+                    <button id="filterBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md">
+                        <i class="fas fa-filter mr-2"></i> Filter
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export Button -->
+        <div class="flex justify-end mb-4">
+            <button id="exportBtn" class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md">
+                <i class="fas fa-file-export mr-2"></i> Export to CSV
+            </button>
+        </div>
+
+        <!-- History Table -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTable" class="bg-white divide-y divide-gray-200">
+                        <!-- Will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                <div class="flex-1 flex justify-between sm:hidden">
+                    <button id="prevPageMobile" class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        Previous
+                    </button>
+                    <button id="nextPageMobile" class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        Next
+                    </button>
+                </div>
+                <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                    <div>
+                        <p id="paginationInfo" class="text-sm text-gray-700">
+                            Showing <span class="font-medium">1</span> to <span class="font-medium">10</span> of <span class="font-medium">20</span> results
+                        </p>
+                    </div>
+                    <div>
+                        <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                            <button id="prevPage" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                <span class="sr-only">Previous</span>
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <div id="pageNumbers" class="flex">
+                                <!-- Page numbers will be inserted here -->
+                            </div>
+                            <button id="nextPage" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                <span class="sr-only">Next</span>
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check authentication
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/';
+        }
+
+        // Current pagination state
+        let currentPage = 1;
+        const itemsPerPage = 10;
+        let totalItems = 0;
+        let totalPages = 1;
+
+        // Initialize date filters to current month
+        function initDateFilters() {
+            const today = new Date();
+            const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+            
+            document.getElementById('fromDate').valueAsDate = firstDay;
+            document.getElementById('toDate').valueAsDate = today;
+        }
+
+        // Format date as YYYY-MM-DD
+        function formatDate(date) {
+            return date.toISOString().split('T')[0];
+        }
+
+        // Fetch attendance history
+        async function fetchHistory(page = 1) {
+            const fromDate = document.getElementById('fromDate').value;
+            const toDate = document.getElementById('toDate').value;
+            const status = document.getElementById('statusFilter').value;
+
+            try {
+                let url = `/api/history?page=${page}&limit=${itemsPerPage}`;
+                if (fromDate) url += `&from=${fromDate}`;
+                if (toDate) url += `&to=${toDate}`;
+                if (status !== 'all') url += `&status=${status}`;
+
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch history');
+                }
+
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Error:', error);
+                if (error.message.includes('401')) {
+                    localStorage.removeItem('token');
+                    window.location.href = '/';
+                }
+                return { history: [], total: 0 };
+            }
+        }
+
+        // Update history table
+        function updateHistoryTable(data) {
+            const tableBody = document.getElementById('historyTable');
+            tableBody.innerHTML = '';
+
+            if (data.history.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td colspan="4" class="px-6 py-4 text-center text-gray-500">No attendance records found</td>
+                `;
+                tableBody.appendChild(row);
+                return;
+            }
+
+            data.history.forEach(record => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${new Date(record.timestamp).toLocaleDateString()}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${new Date(record.timestamp).toLocaleTimeString()}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                            ${record.status === 'in' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                            ${record.status === 'in' ? 'In' : 'Out'}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${record.location || 'N/A'}
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Update pagination controls
+        function updatePagination(total) {
+            totalItems = total;
+            totalPages = Math.ceil(total / itemsPerPage);
+
+            // Update pagination info
+            const startItem = (currentPage - 1) * itemsPerPage + 1;
+            const endItem = Math.min(currentPage * itemsPerPage, total);
+            document.getElementById('paginationInfo').innerHTML = `
+                Showing <span class="font-medium">${startItem}</span> to <span class="font-medium">${endItem}</span> of <span class="font-medium">${total}</span> results
+            `;
+
+            // Update page numbers
+            const pageNumbers = document.getElementById('pageNumbers');
+            pageNumbers.innerHTML = '';
+
+            // Always show first page
+            addPageNumber(1);
+
+            // Show ellipsis if needed
+            if (currentPage > 3) {
+                const ellipsis = document.createElement('span');
+                ellipsis.className = 'relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700';
+                ellipsis.textContent = '...';
+                pageNumbers.appendChild(ellipsis);
+            }
+
+            // Show current page and neighbors
+            for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+                addPageNumber(i);
+            }
+
+            // Show ellipsis if needed
+            if (currentPage < totalPages - 2) {
+                const ellipsis = document.createElement('span');
+                ellipsis.className = 'relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700';
+                ellipsis.textContent = '...';
+                pageNumbers.appendChild(ellipsis);
+            }
+
+            // Always show last page if different from first
+            if (totalPages > 1) {
+                addPageNumber(totalPages);
+            }
+
+            // Disable/enable prev/next buttons
+            document.getElementById('prevPage').disabled = currentPage === 1;
+            document.getElementById('nextPage').disabled = currentPage === totalPages;
+            document.getElementById('prevPageMobile').disabled = currentPage === 1;
+            document.getElementById('nextPageMobile').disabled = currentPage === totalPages;
+        }
+
+        function addPageNumber(page) {
+            const pageNumbers = document.getElementById('pageNumbers');
+            const pageBtn = document.createElement('button');
+            pageBtn.className = `relative inline-flex items-center px-4 py-2 border text-sm font-medium 
+                ${page === currentPage ? 'z-10 bg-blue-50 border-blue-500 text-blue-600' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'}`;
+            pageBtn.textContent = page;
+            pageBtn.addEventListener('click', () => {
+                currentPage = page;
+                loadHistory();
+            });
+            pageNumbers.appendChild(pageBtn);
+        }
+
+        // Load history with current filters and pagination
+        async function loadHistory() {
+            const data = await fetchHistory(currentPage);
+            updateHistoryTable(data);
+            updatePagination(data.total);
+        }
+
+        // Export to CSV
+        document.getElementById('exportBtn').addEventListener('click', async () => {
+            try {
+                const fromDate = document.getElementById('fromDate').value;
+                const toDate = document.getElementById('toDate').value;
+                const status = document.getElementById('statusFilter').value;
+
+                let url = `/api/history?limit=10000`; // Large limit to get all records
+                if (fromDate) url += `&from=${fromDate}`;
+                if (toDate) url += `&to=${toDate}`;
+                if (status !== 'all') url += `&status=${status}`;
+
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to export history');
+                }
+
+                const data = await response.json();
+
+                // Convert to CSV
+                let csv = 'Date,Time,Status,Location\n';
+                data.history.forEach(record => {
+                    const date = new Date(record.timestamp).toLocaleDateString();
+                    const time = new Date(record.timestamp).toLocaleTimeString();
+                    const status = record.status === 'in' ? 'Punch In' : 'Punch Out';
+                    const location = record.location || 'N/A';
+                    csv += `"${date}","${time}","${status}","${location}"\n`;
+                });
+
+                // Download CSV
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const urlObj = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = urlObj;
+                a.download = `attendance_history_${formatDate(new Date())}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(urlObj);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to export: ' + error.message);
+            }
+        });
+
+        // Event listeners
+        document.getElementById('filterBtn').addEventListener('click', () => {
+            currentPage = 1;
+            loadHistory();
+        });
+
+        document.getElementById('prevPage').addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                loadHistory();
+            }
+        });
+
+        document.getElementById('nextPage').addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                loadHistory();
+            }
+        });
+
+        document.getElementById('prevPageMobile').addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                loadHistory();
+            }
+        });
+
+        document.getElementById('nextPageMobile').addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                loadHistory();
+            }
+        });
+
+        // Initialize and load first page
+        initDateFilters();
+        loadHistory();
+    </script>
+</body>
+</html>

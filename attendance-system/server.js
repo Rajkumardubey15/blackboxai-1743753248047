@@ -10,7 +10,7 @@ const winston = require('winston');
 
 // Initialize Express app
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
 
 // Security middleware
 app.use(helmet({
@@ -94,7 +94,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   require('./src/db/init-db')(); // Initialize database
 });
